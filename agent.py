@@ -5,54 +5,66 @@ from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 
-# Import our custom Brain and Eyes
 from router import route_user_query
 from retriever import retrieve_context
 
 load_dotenv()
 
-# 1. Define the Digital Physics of the Agent's Memory (State)
+# 1. State Definition
 class AgentState(TypedDict):
-    query: str
+    query: str       
     intent: str
     entities: List[str]
-    context: str
-    final_answer: str
+    context: str     
+    final_answer: str 
 
-# 2. Define the Discrete Execution Nodes
+# 2. The Cognitive Nodes
 def node_route(state: AgentState):
-    print("🟢 LANGGRAPH NODE: Routing Query...")
+    print("🟢 LANGGRAPH NODE: Analyzing Essay Intent...")
     route = route_user_query(state["query"])
     return {"intent": route.intent, "entities": route.entities}
 
 def node_retrieve(state: AgentState):
-    print("🟢 LANGGRAPH NODE: Retrieving Context from Neo4j...")
+    print("🟢 LANGGRAPH NODE: Retrieving Absolute Truth from Neo4j...")
     context = retrieve_context(state["query"])
     return {"context": context}
 
 def node_generate(state: AgentState):
-    print("🟢 LANGGRAPH NODE: Generating UPSC Grade Answer...")
+    print("🟢 LANGGRAPH NODE: Generating UPSC Evaluation Report...")
     
-    # Using Llama 3.1 8B via Groq for high-speed, zero-cost inference
     llm = ChatGroq(
-        temperature=0.2, # Low temperature for factual strictness
+        temperature=0.1, 
         model_name="llama-3.1-8b-instant", 
         api_key=os.getenv("GROQ_API_KEY")
     )
     
     system_prompt = f"""
-    You are an elite UPSC Evaluation Engine. 
-    Your strict directive is to answer the user's query utilizing ONLY the provided Constitutional Context retrieved from the database.
-    If the context is insufficient, explicitly state that you lack the data. Do not hallucinate case laws.
+    You are Sentinel Zero, an elite, strict UPSC Mains Examiner evaluating a GS Paper 2 (Polity) student answer.
     
-    --- CONTEXT BLOCK ---
+    Your strict directive is to evaluate the student's payload utilizing ONLY the provided Constitutional Context retrieved from the Neo4j Graph Database.
+    Compare their answer against the absolute truth in the database. Do not hallucinate external facts.
+    
+    Provide your evaluation in the following strict markdown format:
+    
+    ### 📊 Final UPSC Score: [Insert Score]/10
+    
+    **1. Factual Accuracy:**
+    [Evaluate if what they wrote aligns with the retrieved Constitutional Context. Point out any specific factual errors or misinterpretations.]
+    
+    **2. Missing Constitutional Elements:**
+    [Identify exact Articles, Clauses, or Supreme Court Case Laws that are present in the retrieved context but the student failed to mention.]
+    
+    **3. Structure & Presentation:**
+    [Critique the flow, introduction, and conclusion as per standard UPSC expectations.]
+    
+    --- CONTEXT BLOCK (Absolute Truth) ---
     {state['context']}
-    ---------------------
+    --------------------------------------
     """
     
     response = llm.invoke([
         SystemMessage(content=system_prompt),
-        HumanMessage(content=state["query"])
+        HumanMessage(content=f"Student Answer Payload:\n\n{state['query']}")
     ])
     
     return {"final_answer": response.content}
@@ -61,33 +73,13 @@ def node_generate(state: AgentState):
 def build_agent():
     workflow = StateGraph(AgentState)
     
-    # Add Nodes
     workflow.add_node("route", node_route)
     workflow.add_node("retrieve", node_retrieve)
     workflow.add_node("generate", node_generate)
     
-    # Define the strict flow of logic
     workflow.set_entry_point("route")
     workflow.add_edge("route", "retrieve")
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", END)
     
     return workflow.compile()
-
-if __name__ == "__main__":
-    print("🚀 INITIALIZING UPSC BEAST AGENT 🚀\n")
-    
-    agent_executor = build_agent()
-    
-    # TEST-DRIVEN EXECUTION: The Final Pipeline Test
-    test_query = "What constitutes the basic features of the Constitution based on recent Supreme Court judgements?"
-    
-    print(f"USER QUERY: {test_query}\n")
-    
-    # Execute the LangGraph State Machine
-    final_state = agent_executor.invoke({"query": test_query})
-    
-    print("\n" + "="*60)
-    print("FINAL UPSC ANSWER:")
-    print("="*60)
-    print(final_state["final_answer"])
