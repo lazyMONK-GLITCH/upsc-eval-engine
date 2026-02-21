@@ -10,9 +10,10 @@ from retriever import retrieve_context
 
 load_dotenv()
 
-# 1. State Definition
+# 1. State Definition (Notice the new 'mode' parameter)
 class AgentState(TypedDict):
     query: str       
+    mode: str        # 'query' or 'evaluate'
     intent: str
     entities: List[str]
     context: str     
@@ -20,7 +21,7 @@ class AgentState(TypedDict):
 
 # 2. The Cognitive Nodes
 def node_route(state: AgentState):
-    print("🟢 LANGGRAPH NODE: Analyzing Essay Intent...")
+    print(f"🟢 LANGGRAPH NODE: Routing ({state.get('mode', 'query')} mode)...")
     route = route_user_query(state["query"])
     return {"intent": route.intent, "entities": route.entities}
 
@@ -30,7 +31,7 @@ def node_retrieve(state: AgentState):
     return {"context": context}
 
 def node_generate(state: AgentState):
-    print("🟢 LANGGRAPH NODE: Generating UPSC Evaluation Report...")
+    print("🟢 LANGGRAPH NODE: Generating Output...")
     
     llm = ChatGroq(
         temperature=0.1, 
@@ -38,33 +39,39 @@ def node_generate(state: AgentState):
         api_key=os.getenv("GROQ_API_KEY")
     )
     
-    system_prompt = f"""
-    You are Sentinel Zero, an elite, strict UPSC Mains Examiner evaluating a GS Paper 2 (Polity) student answer.
-    
-    Your strict directive is to evaluate the student's payload utilizing ONLY the provided Constitutional Context retrieved from the Neo4j Graph Database.
-    Compare their answer against the absolute truth in the database. Do not hallucinate external facts.
-    
-    Provide your evaluation in the following strict markdown format:
-    
-    ### 📊 Final UPSC Score: [Insert Score]/10
-    
-    **1. Factual Accuracy:**
-    [Evaluate if what they wrote aligns with the retrieved Constitutional Context. Point out any specific factual errors or misinterpretations.]
-    
-    **2. Missing Constitutional Elements:**
-    [Identify exact Articles, Clauses, or Supreme Court Case Laws that are present in the retrieved context but the student failed to mention.]
-    
-    **3. Structure & Presentation:**
-    [Critique the flow, introduction, and conclusion as per standard UPSC expectations.]
-    
-    --- CONTEXT BLOCK (Absolute Truth) ---
-    {state['context']}
-    --------------------------------------
-    """
+    # DYNAMIC COGNITIVE SWITCH
+    if state.get("mode") == "evaluate":
+        system_prompt = f"""
+        You are Sentinel Zero, an elite, strict UPSC Mains Examiner evaluating a student's answer.
+        Evaluate the student's payload utilizing ONLY the provided Constitutional Context retrieved from the Neo4j Graph Database.
+        
+        Provide your evaluation in the following strict markdown format:
+        ### 📊 Final UPSC Score: [Insert Score]/10
+        **1. Factual Accuracy:** [Evaluate alignment with retrieved context]
+        **2. Missing Constitutional Elements:** [Identify exact missing Articles/Cases]
+        **3. Structure & Presentation:** [Critique flow and structure]
+        
+        --- CONTEXT BLOCK (Absolute Truth) ---
+        {state['context']}
+        --------------------------------------
+        """
+        user_payload = f"Student Answer Payload:\n\n{state['query']}"
+        
+    else:
+        system_prompt = f"""
+        You are Sentinel Zero, an elite Constitutional Intelligence Engine.
+        Your strict directive is to answer the user's query utilizing ONLY the provided Constitutional Context retrieved from the database.
+        If the context is insufficient, explicitly state that you lack the data. Do not hallucinate.
+        
+        --- CONTEXT BLOCK ---
+        {state['context']}
+        ---------------------
+        """
+        user_payload = state["query"]
     
     response = llm.invoke([
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"Student Answer Payload:\n\n{state['query']}")
+        HumanMessage(content=user_payload)
     ])
     
     return {"final_answer": response.content}
