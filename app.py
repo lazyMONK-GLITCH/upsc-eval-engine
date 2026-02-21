@@ -9,7 +9,8 @@ st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* header visibility restored for mobile sidebar toggle */
+    
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
     html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
     .streamlit-expanderHeader { font-size: 0.85rem; color: #888; border-bottom: 1px solid #333; }
